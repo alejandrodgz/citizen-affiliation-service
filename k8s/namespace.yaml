@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: citizen-affiliation
+  labels:
+    name: citizen-affiliation
+    environment: production

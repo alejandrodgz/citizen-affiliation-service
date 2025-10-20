@@ -1,0 +1,170 @@
+# CI Pipeline for Citizen Affiliation Service
+name: CI Pipeline
+
+# Triggers
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # Manual trigger
+
+# Jobs
+jobs:
+  # -------------------------------------
+  # CI Job: Build, Test, Lint, Publish Docker Image
+  # -------------------------------------
+  build-test-publish:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.set_outputs.outputs.image_tag }}
+
+    steps:
+      # 1. Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for SonarCloud
+
+      # 2. Setup Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. Cache Python dependencies
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # 4. Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pylint flake8 black
+
+      # 5. Run Black (Code Formatter) - Check only (exclude migrations)
+      - name: Run Black (Formatter Check)
+        run: |
+          black --check affiliation config tests --exclude '/migrations/' || echo "Black formatting issues found (non-blocking)"
+        continue-on-error: true
+
+      # 6. Run Pylint (Linter)
+      - name: Run Pylint
+        run: |
+          pylint affiliation --ignore=migrations --output-format=text --exit-zero > pylint-report.txt
+          cat pylint-report.txt
+        continue-on-error: true
+
+      # 7. Run Flake8 (Linter)
+      - name: Run Flake8
+        run: |
+          flake8 affiliation config tests --max-line-length=120 --exclude=migrations,__pycache__,*.pyc --output-file=flake8-report.txt --exit-zero
+          cat flake8-report.txt
+        continue-on-error: true
+
+      # 8. Setup database for tests (SQLite)
+      - name: Setup test environment
+        run: |
+          python manage.py migrate --settings=config.test_settings --noinput
+
+      # 9. Run Unit Tests with Coverage
+      - name: Run Unit Tests with Coverage
+        env:
+          DJANGO_SETTINGS_MODULE: config.test_settings
+        run: |
+          pytest --cov=affiliation --cov-report=xml --cov-report=html --cov-report=term-missing --verbose
+
+      # 10. Upload coverage reports as artifacts
+      - name: Upload Coverage Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-reports
+          path: |
+            htmlcov/
+            coverage.xml
+
+      # 11. Upload test reports
+      - name: Upload Test Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: |
+            pylint-report.txt
+            flake8-report.txt
+
+      # 12. SonarCloud Scan (Optional - Non-blocking)
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        if: env.SONAR_TOKEN != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        continue-on-error: true  # Won't fail the build
+
+      # --- Docker Build & Push (only on push to main/master) ---
+
+      # 13. Set up QEMU
+      - name: Set up QEMU
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: docker/setup-qemu-action@v3
+
+      # 14. Set up Docker Buildx
+      - name: Set up Docker Buildx
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: docker/setup-buildx-action@v3
+
+      # 15. Login to Docker Hub
+      - name: Login to Docker Hub
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 16. Build and push Docker image
+      - name: Build and push Docker image
+        id: docker_build_push
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/citizen-affiliation-service:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/citizen-affiliation-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 17. Set job outputs
+      - name: Set Job Outputs
+        id: set_outputs
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        run: |
+          echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      # 18. Print summary
+      - name: Print CI Summary
+        if: always()
+        run: |
+          echo "## CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Code formatting checked" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Linting completed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Unit tests executed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Coverage reports generated" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" -o "${{ github.ref }}" == "refs/heads/master" ]; then
+            echo "- ✅ Docker image built and pushed" >> $GITHUB_STEP_SUMMARY
+          fi

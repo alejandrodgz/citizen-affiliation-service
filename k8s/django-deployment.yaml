@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: citizen-affiliation-api
+  namespace: citizen-affiliation
+  labels:
+    app: citizen-affiliation-api
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: citizen-affiliation-api
+      component: api
+  template:
+    metadata:
+      labels:
+        app: citizen-affiliation-api
+        component: api
+    spec:
+      initContainers:
+      - name: wait-for-dependencies
+        image: busybox:1.35
+        command: 
+        - sh
+        - -c
+        - |
+          echo "Waiting for MySQL to be ready..."
+          until nc -z mysql-service 3306; do
+            echo "MySQL is unavailable - sleeping"
+            sleep 2
+          done
+          echo "MySQL is up!"
+          
+          echo "Waiting for RabbitMQ to be ready..."
+          until nc -z rabbitmq-service 5672; do
+            echo "RabbitMQ is unavailable - sleeping"
+            sleep 2
+          done
+          echo "RabbitMQ is up!"
+          
+          echo "All dependencies are ready!"
+      
+      - name: migration
+        image: citizen-affiliation-service:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python", "manage.py", "migrate", "--noinput"]
+        envFrom:
+        - configMapRef:
+            name: citizen-affiliation-config
+        - secretRef:
+            name: citizen-affiliation-secrets
+      
+      containers:
+      - name: django
+        image: citizen-affiliation-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        command: 
+        - gunicorn
+        - config.wsgi:application
+        - --bind
+        - "0.0.0.0:8000"
+        - --workers
+        - "3"
+        - --timeout
+        - "120"
+        - --access-logfile
+        - "-"
+        - --error-logfile
+        - "-"
+        envFrom:
+        - configMapRef:
+            name: citizen-affiliation-config
+        - secretRef:
+            name: citizen-affiliation-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /api/health/
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health/
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /api/health/
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: citizen-affiliation-api-service
+  namespace: citizen-affiliation
+  labels:
+    app: citizen-affiliation-api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  selector:
+    app: citizen-affiliation-api
+    component: api

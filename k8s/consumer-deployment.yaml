@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: citizen-affiliation-consumer
+  namespace: citizen-affiliation
+  labels:
+    app: citizen-affiliation-consumer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: citizen-affiliation-consumer
+  template:
+    metadata:
+      labels:
+        app: citizen-affiliation-consumer
+    spec:
+      initContainers:
+      - name: wait-for-dependencies
+        image: busybox:1.35
+        command: 
+        - sh
+        - -c
+        - |
+          echo "Waiting for MySQL..."
+          until nc -z mysql-service 3306; do sleep 2; done
+          echo "Waiting for RabbitMQ..."
+          until nc -z rabbitmq-service 5672; do sleep 2; done
+          echo "Dependencies ready!"
+      
+      containers:
+      - name: consumer
+        image: citizen-affiliation-service:latest
+        imagePullPolicy: IfNotPresent
+        command: 
+        - python
+        - manage.py
+        - run_all_consumers
+        envFrom:
+        - configMapRef:
+            name: citizen-affiliation-config
+        - secretRef:
+            name: citizen-affiliation-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "400m"
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "ps aux | grep '[r]un_all_consumers' || exit 1"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3

@@ -1,0 +1,20 @@
+[flake8]
+max-line-length = 120
+exclude = 
+    .git,
+    __pycache__,
+    migrations,
+    */migrations/*,
+    */static/*,
+    */media/*,
+    venv,
+    env,
+    .venv,
+    htmlcov,
+    .pytest_cache
+# Ignore certain error codes globally
+ignore = E203,E501,W503
+# Per-file ignores for specific patterns
+per-file-ignores =
+    __init__.py:F401
+    */rabbitmq/*_consumer.py:E402,W291,W293,E225,E226,F541

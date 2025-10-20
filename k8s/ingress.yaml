@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: citizen-affiliation-ingress
+  namespace: citizen-affiliation
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: affiliation.yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: citizen-affiliation-api-service
+            port:
+              number: 8000
+  tls:
+  - hosts:
+    - affiliation.yourdomain.com
+    secretName: citizen-affiliation-tls

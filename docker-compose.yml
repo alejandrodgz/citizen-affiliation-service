@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  db:
+    image: mariadb:10.11
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: citizen_affiliation
+      MYSQL_USER: djangouser
+      MYSQL_PASSWORD: djangopass
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=mysql://djangouser:djangopass@db:3306/citizen_affiliation
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=admin
+      - RABBITMQ_PASSWORD=admin
+      - RABBITMQ_VHOST=/
+      - RABBITMQ_AFFILIATION_CREATED_QUEUE=affiliation.created
+      - RABBITMQ_USER_TRANSFERRED_QUEUE=user.transferred
+      - RABBITMQ_DOCUMENTS_DOWNLOAD_REQUESTED_QUEUE=documents.download.requested
+      - RABBITMQ_DOCUMENTS_READY_QUEUE=documents.ready
+      - RABBITMQ_REGISTER_CITIZEN_REQUESTED_QUEUE=register.citizen.requested
+      - RABBITMQ_REGISTER_CITIZEN_COMPLETED_QUEUE=register.citizen.completed
+      - RABBITMQ_UNREGISTER_CITIZEN_REQUESTED_QUEUE=unregister.citizen.requested
+      - RABBITMQ_UNREGISTER_CITIZEN_COMPLETED_QUEUE=unregister.citizen.completed
+      - GOVCARPETA_API_URL=https://govcarpeta-apis-4905ff3c005b.herokuapp.com
+      - OPERATOR_ID=68f003d9a49e090002e5d0b5
+      - OPERATOR_NAME=TEST DAGZ
+      - TRANSFER_CONFIRMATION_URL=http://localhost:8000/api/v1/citizens/transfer/confirm/
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  consumer:
+    build: .
+    command: python manage.py run_all_consumers
+    volumes:
+      - .:/app
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=mysql://djangouser:djangopass@db:3306/citizen_affiliation
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=admin
+      - RABBITMQ_PASSWORD=admin
+      - RABBITMQ_VHOST=/
+      - RABBITMQ_AFFILIATION_CREATED_QUEUE=affiliation.created
+      - RABBITMQ_USER_TRANSFERRED_QUEUE=user.transferred
+      - RABBITMQ_DOCUMENTS_DOWNLOAD_REQUESTED_QUEUE=documents.download.requested
+      - RABBITMQ_DOCUMENTS_READY_QUEUE=documents.ready
+      - RABBITMQ_REGISTER_CITIZEN_REQUESTED_QUEUE=register.citizen.requested
+      - RABBITMQ_REGISTER_CITIZEN_COMPLETED_QUEUE=register.citizen.completed
+      - RABBITMQ_UNREGISTER_CITIZEN_REQUESTED_QUEUE=unregister.citizen.requested
+      - RABBITMQ_UNREGISTER_CITIZEN_COMPLETED_QUEUE=unregister.citizen.completed
+      - OPERATOR_ID=68f003d9a49e090002e5d0b5
+      - OPERATOR_NAME=TEST DAGZ
+      - TRANSFER_CONFIRMATION_URL=http://localhost:8000/api/v1/citizens/transfer/confirm/
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  rabbitmq_data:

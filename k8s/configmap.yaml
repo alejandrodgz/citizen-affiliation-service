@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: citizen-affiliation-config
+  namespace: citizen-affiliation
+data:
+  # Django settings
+  DJANGO_SETTINGS_MODULE: "config.settings"
+  DEBUG: "False"
+  ALLOWED_HOSTS: "*"
+  
+  # Database settings
+  DATABASE_URL: "mysql://djangouser:djangopass@mysql-service:3306/citizen_affiliation"
+  
+  # RabbitMQ settings
+  RABBITMQ_HOST: "rabbitmq-service"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: "admin"
+  RABBITMQ_VHOST: "/"
+  
+  # RabbitMQ Queues
+  RABBITMQ_AFFILIATION_CREATED_QUEUE: "affiliation.created"
+  RABBITMQ_USER_TRANSFERRED_QUEUE: "user.transferred"
+  RABBITMQ_DOCUMENTS_DOWNLOAD_REQUESTED_QUEUE: "documents.download.requested"
+  RABBITMQ_DOCUMENTS_READY_QUEUE: "documents.ready"
+  RABBITMQ_REGISTER_CITIZEN_REQUESTED_QUEUE: "register.citizen.requested"
+  RABBITMQ_REGISTER_CITIZEN_COMPLETED_QUEUE: "register.citizen.completed"
+  RABBITMQ_UNREGISTER_CITIZEN_REQUESTED_QUEUE: "unregister.citizen.requested"
+  RABBITMQ_UNREGISTER_CITIZEN_COMPLETED_QUEUE: "unregister.citizen.completed"
+  
+  # External API settings
+  GOVCARPETA_API_URL: "https://govcarpeta-apis-4905ff3c005b.herokuapp.com"
+  
+  # Operator settings
+  OPERATOR_ID: "68f003d9a49e090002e5d0b5"
+  OPERATOR_NAME: "TEST DAGZ"
+  TRANSFER_CONFIRMATION_URL: "http://citizen-affiliation-api-service:8000/api/v1/citizens/transfer/confirm/"
+  
+  # Application settings
+  LOG_LEVEL: "INFO"
