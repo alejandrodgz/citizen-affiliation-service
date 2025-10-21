@@ -73,19 +73,14 @@ jobs:
           cat flake8-report.txt
         continue-on-error: true
 
-      # 8. Setup database for tests (SQLite)
-      - name: Setup test environment
-        run: |
-          python manage.py migrate --settings=config.test_settings --noinput
-
-      # 9. Run Unit Tests with Coverage
+      # 8. Run Unit Tests with Coverage (pytest handles database setup)
       - name: Run Unit Tests with Coverage
         env:
           DJANGO_SETTINGS_MODULE: config.test_settings
         run: |
           pytest --cov=affiliation --cov-report=xml --cov-report=html --cov-report=term-missing --verbose
 
-      # 10. Upload coverage reports as artifacts
+      # 9. Upload coverage reports as artifacts
       - name: Upload Coverage Reports
         uses: actions/upload-artifact@v4
         if: always()
@@ -95,7 +90,7 @@ jobs:
             htmlcov/
             coverage.xml
 
-      # 11. Upload test reports
+      # 10. Upload test reports
       - name: Upload Test Reports
         uses: actions/upload-artifact@v4
         if: always()
@@ -105,7 +100,7 @@ jobs:
             pylint-report.txt
             flake8-report.txt
 
-      # 12. SonarCloud Scan (Optional - Non-blocking)
+      # 11. SonarCloud Scan (Optional - Non-blocking)
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
         if: env.SONAR_TOKEN != ''
@@ -116,17 +111,17 @@ jobs:
 
       # --- Docker Build & Push (only on push to main/master) ---
 
-      # 13. Set up QEMU
+      # 12. Set up QEMU
       - name: Set up QEMU
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: docker/setup-qemu-action@v3
 
-      # 14. Set up Docker Buildx
+      # 13. Set up Docker Buildx
       - name: Set up Docker Buildx
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: docker/setup-buildx-action@v3
 
-      # 15. Login to Docker Hub
+      # 14. Login to Docker Hub
       - name: Login to Docker Hub
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: docker/login-action@v3
@@ -134,7 +129,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 16. Build and push Docker image
+      # 15. Build and push Docker image
       - name: Build and push Docker image
         id: docker_build_push
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
@@ -149,14 +144,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 17. Set job outputs
+      # 16. Set job outputs
       - name: Set Job Outputs
         id: set_outputs
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         run: |
           echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
 
-      # 18. Print summary
+      # 17. Print summary
       - name: Print CI Summary
         if: always()
         run: |
